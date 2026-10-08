@@ -46,7 +46,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%}
 <div id="ctrls" hidden><div id="stick" aria-label="Move"><div id="knob"></div></div><button id="fire">FIRE</button></div>
 <div id="end" hidden><h2 id="endt"></h2><p id="endp"></p><button id="again" hidden>REMATCH</button></div>
 <script>
-const $=id=>document.getElementById(id),N=9,T=220,W=24,R=22,SP=230,BS=560,WIN=10;
+const $=id=>document.getElementById(id),N=9,T=220,W=24,R=30,SP=230,BS=560,WIN=10;
 const api=b=>fetch('/api/room',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(async r=>{const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Server error');return j});
 function rng(s){let h=1779033703;for(let i=0;i<s.length;i++){h=Math.imul(h^s.charCodeAt(i),3432918353);h=h<<13|h>>>19}let a=h;return()=>{a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
 // Map: a random trail network. Every used cell has 2 or 4 open sides (what the tileset can draw); spawns have 1; unused cells are solid black.
@@ -123,7 +123,7 @@ function update(dt){
     const m=Math.min(1,Math.hypot(ix,iy));
     if(m>.15){me.a=Math.atan2(iy,ix);me.x+=Math.cos(me.a)*SP*m*dt;me.y+=Math.sin(me.a)*SP*m*dt;push(me,R)}
     cd-=dt;inv-=dt;
-    if((firing||keys[' '])&&cd<=0){cd=.45;const c=Math.cos(me.a),s=Math.sin(me.a);mb.push({id:++bid,x:me.x+c*30,y:me.y+s*30,vx:c*BS,vy:s*BS,life:1.6})}
+    if((firing||keys[' '])&&cd<=0){cd=.45;const c=Math.cos(me.a),s=Math.sin(me.a);mb.push({id:++bid,x:me.x+c*42,y:me.y+s*42,vx:c*BS,vy:s*BS,life:1.6})}
     mb=moveBullets(mb,dt);rb=moveBullets(rb,dt);
     // A bullet vanishes on contact with any tank other than its owner; damage itself is decided by the victim's own client.
     const hitOther=b=>{for(const[id,p]of others)if(id!==b.o&&Math.hypot(b.x-p.x,b.y-p.y)<R+5){p.fl=.4;fx.push({x:b.x,y:b.y,t:.3});return true}return false};
@@ -139,11 +139,11 @@ function update(dt){
 }
 const cv=$('cv'),ctx=cv.getContext('2d');
 function tank(x,y,a,col,blink,lab,fl){if(blink)ctx.globalAlpha=.4;ctx.strokeStyle=col;ctx.lineWidth=4;ctx.beginPath();ctx.arc(x,y,R+5,0,7);ctx.stroke();
-  ctx.save();ctx.translate(x,y);ctx.rotate(a+Math.PI/2);ctx.drawImage(IMG.tank,-32,-32,64,64);ctx.restore();if(fl>0){ctx.fillStyle=`rgba(255,40,60,${.75*Math.min(1,fl/.4)})`;ctx.beginPath();ctx.arc(x,y,R,0,7);ctx.fill()}ctx.globalAlpha=1;if(lab){ctx.fillStyle=col;ctx.font='700 18px sans-serif';ctx.textAlign='center';ctx.fillText(lab,x,y-R-12)}}
+  ctx.save();ctx.translate(x,y);ctx.rotate(a+Math.PI/2);ctx.drawImage(IMG.tank,-44,-44,88,88);ctx.restore();if(fl>0){ctx.fillStyle=`rgba(255,40,60,${.75*Math.min(1,fl/.4)})`;ctx.beginPath();ctx.arc(x,y,R,0,7);ctx.fill()}ctx.globalAlpha=1;if(lab){ctx.fillStyle=col;ctx.font='700 18px sans-serif';ctx.textAlign='center';ctx.fillText(lab,x,y-R-12)}}
 function draw(){
   const dpr=devicePixelRatio||1,w=innerWidth*dpr|0,h=innerHeight*dpr|0;if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h}
   ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#14142b';ctx.fillRect(0,0,w,h);
-  const z=Math.min(w,h)/(T*3.2);ctx.setTransform(z,0,0,z,w/2-me.x*z,h/2-me.y*z);
+  const z=Math.min(w,h)/(T*2.8);ctx.setTransform(z,0,0,z,w/2-me.x*z,h/2-me.y*z);
   ctx.fillStyle='#000';ctx.fillRect(0,0,N*T,N*T);
   for(const t of map.tiles){if(t.r){ctx.save();ctx.translate(t.x+T/2,t.y+T/2);ctx.rotate(Math.PI);ctx.drawImage(IMG[t.k],-T/2,-T/2,T,T);ctx.restore()}else ctx.drawImage(IMG[t.k],t.x,t.y,T,T)}
   ctx.lineWidth=4;for(const f of fx){ctx.strokeStyle=`rgba(255,61,90,${f.t/.3})`;ctx.beginPath();ctx.arc(f.x,f.y,R*.5+(.3-f.t)*160,0,7);ctx.stroke()}
