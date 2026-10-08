@@ -46,14 +46,14 @@ canvas{position:fixed;inset:0;width:100%;height:100%}
 <div id="ctrls" hidden><div id="stick" aria-label="Move"><div id="knob"></div></div><button id="fire">FIRE</button></div>
 <div id="end" hidden><h2 id="endt"></h2><p id="endp"></p><button id="again" hidden>REMATCH</button></div>
 <script>
-const $=id=>document.getElementById(id),N=9,T=220,W=24,R=30,SP=230,BS=560,WIN=10;
+const $=id=>document.getElementById(id),N=11,T=220,W=24,R=30,SP=230,BS=560,WIN=10;
 const api=b=>fetch('/api/room',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}).then(async r=>{const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Server error');return j});
 function rng(s){let h=1779033703;for(let i=0;i<s.length;i++){h=Math.imul(h^s.charCodeAt(i),3432918353);h=h<<13|h>>>19}let a=h;return()=>{a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
 // Map: a random trail network. Every used cell has 2 or 4 open sides (what the tileset can draw); spawns have 1; unused cells are solid black.
 function genMap(seed){
-  const rnd=rng(seed),rot=i=>N*N-1-i,C=(N*N-1)/2,S0=N*(N-1)+(N-1)/2,S1=rot(S0),ALL=[...Array(N*N).keys()];
-  const nb=i=>{const x=i%N,y=i/N|0,o=[];if(x>0)o.push(i-1);if(x<N-1)o.push(i+1);if(y>0)o.push(i-N);if(y<N-1)o.push(i+N);return o};
-  const key=(a,b)=>a<b?a+','+b:b+','+a,md=i=>Math.abs(i%N-4)+Math.abs((i/N|0)-4);
+  const rnd=rng(seed),rot=i=>N*N-1-i,C=(N*N-1)/2,S0=N*(N-1)+(N-1)/2,S1=rot(S0),ALL=[...Array(N*N).keys()],M=(N-1)/2,inB=i=>Math.abs(i%N-M)<=1&&Math.abs((i/N|0)-M)<=1,AR=[C-2*N,C+2*N,C-2,C+2]; // the center is one big 3x3-cell block, entered through 4 arms
+  const nb=i=>{if(i===C)return AR;const x=i%N,y=i/N|0,o=[];if(x>0)o.push(i-1);if(x<N-1)o.push(i+1);if(y>0)o.push(i-N);if(y<N-1)o.push(i+N);const r=o.filter(j=>!inB(j));if(AR.includes(i))r.push(C);return r};
+  const key=(a,b)=>a<b?a+','+b:b+','+a,md=i=>Math.abs(i%N-M)+Math.abs((i/N|0)-M);
   let edges,deg;
   const add=(a,b)=>{edges.add(key(a,b));deg[a]++;deg[b]++};
   const route=(a,b)=>{ // random-cost shortest path over unused edges; middle cells may hold at most 2 more edges
@@ -67,21 +67,27 @@ function genMap(seed){
   const bfs=s=>{const D=new Map([[s,0]]),q=[s];for(const i of q)for(const j of nb(i))if(!D.has(j)&&edges.has(key(i,j))){D.set(j,D.get(i)+1);q.push(j)}return D.get(C)};
   for(let tries=0;;tries++){
     edges=new Set();deg=new Array(N*N).fill(0);
-    let w=0;do{w=ALL[rnd()*ALL.length|0]}while(md(w)<2||md(w)>4||w===S0||w===S1);
+    let w=0;do{w=ALL[rnd()*ALL.length|0]}while(md(w)<4||md(w)>6||w===S0||w===S1);
     // spawn -> center -> loop out and back to center -> other spawn: center ends with all 4 sides open
     if(!(route(S0,C)&&route(C,w)&&route(w,C)&&route(C,S1)))continue;
     for(let k=5+(rnd()*4|0);k>0;k--){ // extra loops attach at cells with 2 open sides, which become crossings
-      const used=ALL.filter(i=>deg[i]===2&&i!==C),free=ALL.filter(i=>deg[i]===0);if(!used.length||!free.length)break;
+      const used=ALL.filter(i=>deg[i]===2&&i!==C),free=ALL.filter(i=>deg[i]===0&&!inB(i));if(!used.length||!free.length)break;
       const a=used[rnd()*used.length|0],f=free[rnd()*free.length|0],se=new Set(edges),sd=deg.slice();
       if(!(route(a,f)&&route(f,a))){edges=se;deg=sd}}
     if(tries<300&&Math.abs(bfs(S0)-bfs(S1))>2)continue; // keep both spawns about equally far from the center
     const walls=[],tiles=[],rc=(x,y,w,h)=>walls.push({x,y,w,h});
+    const center=()=>{ // art is scaled so its 4 openings match the corridor width; strips of corridor art fill the gaps to the 3x3 block edge
+      const X=(M-1)*T,S=3*T,CS=(T-2*W)/.29,g=(S-CS)/2,c=X+S/2,r=CS*.4375,ah=(T-2*W)/2,f=g/T;
+      tiles.push({k:'center',x:X+g,y:X+g,s:CS},{k:'v',c:1,f,x:c-T/2,y:X,w:T,h:g},{k:'v',c:1,f,x:c-T/2,y:X+S-g,w:T,h:g},{k:'h',c:1,f,x:X,y:c-T/2,w:g,h:T},{k:'h',c:1,f,x:X+S-g,y:c-T/2,w:g,h:T});
+      for(let y=X;y<X+S;y+=11){const h=Math.min(11,X+S-y),dy=y+h/2-c;if(Math.abs(dy)<=ah)continue;
+        const e=Math.max(Math.abs(dy)<r?Math.sqrt(r*r-dy*dy):0,ah);rc(X,y,c-e-X,h);rc(c+e,y,X+S-c-e,h)}};
     ALL.forEach(i=>{const x0=i%N*T,y0=(i/N|0)*T;
+      if(i===C){center();return}
+      if(inB(i))return;
       if(!deg[i]){rc(x0,y0,T,T);return}
-      const o={n:i>=N&&edges.has(key(i,i-N)),s:i<N*(N-1)&&edges.has(key(i,i+N)),w:i%N>0&&edges.has(key(i,i-1)),e:i%N<N-1&&edges.has(key(i,i+1))};
+      const L=(i,j)=>edges.has(key(i,inB(j)?C:j)),o={n:i>=N&&L(i,i-N),s:i<N*(N-1)&&L(i,i+N),w:i%N>0&&L(i,i-1),e:i%N<N-1&&L(i,i+1)};
       const k=i===C?'center':i===S0||i===S1?'spawn':deg[i]===4?'cross':o.n&&o.s?'v':o.e&&o.w?'h':o.s&&o.e?'dr':o.s&&o.w?'dl':o.n&&o.e?'ur':'ul';
       tiles.push({x:x0,y:y0,k,r:i===S1});
-      if(i===C){const q=T*.2;for(const[a,b]of[[0,0],[1,0],[0,1],[1,1]])rc(x0+a*(T-q),y0+b*(T-q),q,q);return}
       if(!o.n)rc(x0,y0,T,W);if(!o.s)rc(x0,y0+T-W,T,W);if(!o.w)rc(x0,y0,W,T);if(!o.e)rc(x0+T-W,y0,W,T);
       for(const[a,b]of[[0,0],[1,0],[0,1],[1,1]])rc(x0+a*(T-W),y0+b*(T-W),W,W)});
     const sp=i=>({x:(i%N+.5)*T,y:((i/N|0)+.5)*T});
@@ -145,7 +151,9 @@ function draw(){
   ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#14142b';ctx.fillRect(0,0,w,h);
   const z=Math.min(w,h)/(T*2.8);ctx.setTransform(z,0,0,z,w/2-me.x*z,h/2-me.y*z);
   ctx.fillStyle='#000';ctx.fillRect(0,0,N*T,N*T);
-  for(const t of map.tiles){if(t.r){ctx.save();ctx.translate(t.x+T/2,t.y+T/2);ctx.rotate(Math.PI);ctx.drawImage(IMG[t.k],-T/2,-T/2,T,T);ctx.restore()}else ctx.drawImage(IMG[t.k],t.x,t.y,T,T)}
+  for(const t of map.tiles){if(t.r){ctx.save();ctx.translate(t.x+T/2,t.y+T/2);ctx.rotate(Math.PI);ctx.drawImage(IMG[t.k],-T/2,-T/2,T,T);ctx.restore()}
+    else if(t.c){const m=IMG[t.k],iw=m.width,ih=m.height;t.k==='v'?ctx.drawImage(m,0,ih*(1-t.f)/2,iw,ih*t.f,t.x,t.y,t.w,t.h):ctx.drawImage(m,iw*(1-t.f)/2,0,iw*t.f,ih,t.x,t.y,t.w,t.h)}
+    else ctx.drawImage(IMG[t.k],t.x,t.y,t.s||T,t.s||T)}
   ctx.lineWidth=4;for(const f of fx){ctx.strokeStyle=`rgba(255,61,90,${f.t/.3})`;ctx.beginPath();ctx.arc(f.x,f.y,R*.5+(.3-f.t)*160,0,7);ctx.stroke()}
   ctx.fillStyle='#f4efe4';ctx.strokeStyle='#14142b';ctx.lineWidth=2;
   for(const b of[...mb,...rb]){ctx.beginPath();ctx.arc(b.x,b.y,5,0,7);ctx.fill();ctx.stroke()}
