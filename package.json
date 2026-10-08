@@ -1,0 +1,2 @@
+{ "name": "tank-battle", "version": "3.0.0", "type": "module", "private": true,
+  "dependencies": { "@neondatabase/serverless": "^1.0.0" } }
