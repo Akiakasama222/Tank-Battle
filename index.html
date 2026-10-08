@@ -89,13 +89,13 @@ function genMap(seed){
 }
 const hitWall=(x,y,r)=>{for(const w of map.walls){const dx=x-Math.max(w.x,Math.min(x,w.x+w.w)),dy=y-Math.max(w.y,Math.min(y,w.y+w.h));if(dx*dx+dy*dy<r*r)return true}return false};
 function push(o,r){for(const w of map.walls){const cx=Math.max(w.x,Math.min(o.x,w.x+w.w)),cy=Math.max(w.y,Math.min(o.y,w.y+w.h)),dx=o.x-cx,dy=o.y-cy,d=Math.hypot(dx,dy);if(d>0&&d<r){o.x+=dx/d*(r-d);o.y+=dy/d*(r-d)}}}
-let room,pid,pin='',round=0,seed,map,me,mb,rb,seenB,kb,kills,lastK,others,over,inv,cd=0,bid=0,busy=false,firing=false,jx=0,jy=0,syncTimer;
+let room,pid,pin='',round=0,seed,map,me,mb,rb,seenB,fx=[],fl=0,kb,kills,lastK,others,over,inv,cd=0,bid=0,busy=false,firing=false,jx=0,jy=0,syncTimer;
 const keys={};
 // Tileset images live in /assets (file names must match exactly, including case)
 const FILES={spawn:'Spawnpoint',center:'CenterTile',tank:'Character',h:'Horizontal tile',v:'Vertical tile',dr:'Down to right tile',dl:'Down to left tile',cross:'Cross Path tile',ur:'Up to right tile',ul:'Up to left tile'},IMG={};
 const loadAssets=()=>Promise.all(Object.entries(FILES).map(([k,f])=>new Promise(res=>{const im=new Image();im.onload=()=>{IMG[k]=im;res(null)};im.onerror=()=>res(f+'.png');im.src=encodeURI('assets/'+f+'.png')}))).then(r=>r.filter(Boolean));
 const spawnAt=()=>{const p=map.spots[Math.random()*map.spots.length|0];me.x=p.x;me.y=p.y;me.a=Math.random()*6.28};
-function reset(){map=genMap(seed);me={x:0,y:0,a:0};spawnAt();mb=[];rb=[];seenB=new Set();kb={};kills=0;lastK={};others=new Map();over=false;inv=1.5;$('end').hidden=true}
+function reset(){map=genMap(seed);me={x:0,y:0,a:0};spawnAt();mb=[];rb=[];fx=[];fl=0;seenB=new Set();kb={};kills=0;lastK={};others=new Map();over=false;inv=1.5;$('end').hidden=true}
 function start(j){room=j;pid=j.pid;round=j.round;seed=j.seed;history.replaceState(null,'','?room='+j.code);
   $('lobby').hidden=true;['cv','hud','ctrls'].forEach(i=>$(i).hidden=false);$('chip').textContent=j.code;reset();requestAnimationFrame(loop);syncTimer=setInterval(sync,125)}
 async function enter(fn){$('err').textContent='';try{const miss=await loadAssets();if(miss.length)throw new Error('Missing in /assets: '+miss.join(', '));start(await fn())}catch(e){$('err').textContent=e.message}}
@@ -114,7 +114,7 @@ async function sync(){if(busy||!room)return;busy=true;
       for(const[i,x,y,vx,vy]of s.b){const key=id+':'+i;if(!seenB.has(key)){seenB.add(key);rb.push({x,y,vx,vy,life:1.4,o:id})}}}
     for(const id of[...others.keys()])if(!live.has(id))others.delete(id);
     $('err').textContent=''}catch(e){$('status').textContent=e.message}busy=false}
-function die(by){kb[by]=(kb[by]||0)+1;spawnAt();inv=1.5}
+function die(by){kb[by]=(kb[by]||0)+1;fx.push({x:me.x,y:me.y,t:.3});fl=.4;spawnAt();inv=1.5}
 const scoreList=()=>[[pid,kills],...[...others].map(([id,p])=>[id,p.k||0])].sort((a,b)=>b[1]-a[1]);
 function moveBullets(a,dt){return a.filter(b=>{b.x+=b.vx*dt;b.y+=b.vy*dt;b.life-=dt;return b.life>0&&!hitWall(b.x,b.y,4)})}
 function update(dt){
@@ -125,27 +125,31 @@ function update(dt){
     cd-=dt;inv-=dt;
     if((firing||keys[' '])&&cd<=0){cd=.45;const c=Math.cos(me.a),s=Math.sin(me.a);mb.push({id:++bid,x:me.x+c*30,y:me.y+s*30,vx:c*BS,vy:s*BS,life:1.6})}
     mb=moveBullets(mb,dt);rb=moveBullets(rb,dt);
-    rb=rb.filter(b=>{if(inv<=0&&Math.hypot(b.x-me.x,b.y-me.y)<R+5){die(b.o);return false}return true});
+    // A bullet vanishes on contact with any tank other than its owner; damage itself is decided by the victim's own client.
+    const hitOther=b=>{for(const[id,p]of others)if(id!==b.o&&Math.hypot(b.x-p.x,b.y-p.y)<R+5){p.fl=.4;fx.push({x:b.x,y:b.y,t:.3});return true}return false};
+    mb=mb.filter(b=>!hitOther(b));
+    rb=rb.filter(b=>{if(Math.hypot(b.x-me.x,b.y-me.y)<R+5){if(inv<=0)die(b.o);return false}return !hitOther(b)});
     const top=scoreList();
     if(top[0][1]>=WIN){over=true;const w=top[0][0]==pid;$('endt').textContent=w?'YOU WIN!':'P'+top[0][0]+' WINS';
       $('endp').textContent=pid===0?'You are the referee. Start another round when ready.':'Waiting for the referee to start a rematch.';$('again').hidden=pid!==0;$('end').hidden=false}
   }
-  for(const p of others.values()){const k=Math.min(1,dt*12);p.x+=(p.tx-p.x)*k;p.y+=(p.ty-p.y)*k}
+  if(fl>0)fl-=dt;fx=fx.filter(f=>(f.t-=dt)>0);for(const p of others.values()){if(p.fl>0)p.fl-=dt;const k=Math.min(1,dt*12);p.x+=(p.tx-p.x)*k;p.y+=(p.ty-p.y)*k}
   $('s1').textContent=kills;$('board').innerHTML=scoreList().slice(0,4).map(([id,v])=>`<div>${id==pid?'YOU':'P'+id} ${v}</div>`).join('');
   if(!over)$('status').textContent=!others.size?'Waiting for players…':others.size+1+' players · first to '+WIN;
 }
 const cv=$('cv'),ctx=cv.getContext('2d');
-function tank(x,y,a,col,blink,lab){if(blink)ctx.globalAlpha=.4;ctx.strokeStyle=col;ctx.lineWidth=4;ctx.beginPath();ctx.arc(x,y,R+5,0,7);ctx.stroke();
-  ctx.save();ctx.translate(x,y);ctx.rotate(a+Math.PI/2);ctx.drawImage(IMG.tank,-32,-32,64,64);ctx.restore();ctx.globalAlpha=1;if(lab){ctx.fillStyle=col;ctx.font='700 18px sans-serif';ctx.textAlign='center';ctx.fillText(lab,x,y-R-12)}}
+function tank(x,y,a,col,blink,lab,fl){if(blink)ctx.globalAlpha=.4;ctx.strokeStyle=col;ctx.lineWidth=4;ctx.beginPath();ctx.arc(x,y,R+5,0,7);ctx.stroke();
+  ctx.save();ctx.translate(x,y);ctx.rotate(a+Math.PI/2);ctx.drawImage(IMG.tank,-32,-32,64,64);ctx.restore();if(fl>0){ctx.fillStyle=`rgba(255,40,60,${.75*Math.min(1,fl/.4)})`;ctx.beginPath();ctx.arc(x,y,R,0,7);ctx.fill()}ctx.globalAlpha=1;if(lab){ctx.fillStyle=col;ctx.font='700 18px sans-serif';ctx.textAlign='center';ctx.fillText(lab,x,y-R-12)}}
 function draw(){
   const dpr=devicePixelRatio||1,w=innerWidth*dpr|0,h=innerHeight*dpr|0;if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h}
   ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#14142b';ctx.fillRect(0,0,w,h);
   const z=Math.min(w,h)/(T*3.2);ctx.setTransform(z,0,0,z,w/2-me.x*z,h/2-me.y*z);
   ctx.fillStyle='#000';ctx.fillRect(0,0,N*T,N*T);
   for(const t of map.tiles){if(t.r){ctx.save();ctx.translate(t.x+T/2,t.y+T/2);ctx.rotate(Math.PI);ctx.drawImage(IMG[t.k],-T/2,-T/2,T,T);ctx.restore()}else ctx.drawImage(IMG[t.k],t.x,t.y,T,T)}
+  ctx.lineWidth=4;for(const f of fx){ctx.strokeStyle=`rgba(255,61,90,${f.t/.3})`;ctx.beginPath();ctx.arc(f.x,f.y,R*.5+(.3-f.t)*160,0,7);ctx.stroke()}
   ctx.fillStyle='#f4efe4';ctx.strokeStyle='#14142b';ctx.lineWidth=2;
   for(const b of[...mb,...rb]){ctx.beginPath();ctx.arc(b.x,b.y,5,0,7);ctx.fill();ctx.stroke()}
-  for(const[id,p]of others)tank(p.x,p.y,p.a,`hsl(${id*137.5%360} 85% 60%)`,false,'P'+id);tank(me.x,me.y,me.a,'#3d8bff',inv>0&&(inv*10|0)%2)}
+  for(const[id,p]of others)tank(p.x,p.y,p.a,`hsl(${id*137.5%360} 85% 60%)`,false,'P'+id,p.fl);tank(me.x,me.y,me.a,'#3d8bff',inv>0&&(inv*10|0)%2,'',fl)}
 let last=performance.now();
 function loop(t){const dt=Math.min(.05,(t-last)/1000);last=t;update(dt);draw();requestAnimationFrame(loop)}
 // Controls: joystick and fire button sit side by side
